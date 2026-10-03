@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Lock, ArrowLeft, AreaChart as ChartIcon, User, Users, UserPlus, CheckCircle, XCircle, Shield, Activity, Smartphone, Server, MessageSquare, ChevronLeft, ChevronRight, BarChart } from 'lucide-react';
+import { Save, Lock, ArrowLeft, AreaChart as ChartIcon, User, Users, UserPlus, CheckCircle, XCircle, Shield, Activity, Smartphone, Server, MessageSquare, ChevronLeft, ChevronRight, BarChart, Bell, Download, AlertTriangle, Send, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart as ReBarChart, Bar, Cell } from 'recharts';
 import { translations } from './translations';
@@ -41,6 +41,122 @@ export default function App() {
   const [editingPrice, setEditingPrice] = useState(null); // { id, price }
   const [lang, setLang] = useState('fr');
   const t = translations[lang].admin;
+
+  // ── État pour la gestion des mises à jour mobiles ──────────────────────────
+  const [appVersionForm, setAppVersionForm] = useState({
+    version: '1.2.0',
+    versionCode: 3,
+    minVersionCode: 1,
+    forceUpdate: false,
+    apkUrl: 'https://goldprojectbackend-production.up.railway.app/PrixOr.apk',
+    titleAr: 'تحديث جديد متوفر للتطبيق',
+    titleFr: 'Nouvelle mise à jour disponible',
+    messageAr: 'يتوفر إصدار جديد من تطبيق سعر الذهب. يرجى تحديث التطبيق للاستفادة من أحدث المميزات ودقة الأسعار المباشرة.',
+    messageFr: 'Une nouvelle version de PrixOr est disponible. Veuillez mettre à jour l\'application pour profiter des dernières améliorations.',
+    notesAr: '• تحسين سرعة واستقرار التطبيق\n• دقة الأسعار وتحديثات فورية في الوقت الفعلي\n• تحسين التوافق مع أجهزة أندرويد',
+    notesFr: '• Améliorations de performance et stabilité\n• Nouvelles fonctionnalités et prix en temps réel\n• Compatibilité optimisée Android & PWA',
+    sendPushNotification: true,
+    broadcastSocket: true
+  });
+  const [fcmCount, setFcmCount] = useState(0);
+
+  const fetchAppVersion = async () => {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/app-version`);
+      if (res.ok) {
+        const data = await res.json();
+        setAppVersionForm(prev => ({
+          ...prev,
+          ...data,
+          sendPushNotification: true,
+          broadcastSocket: true
+        }));
+      }
+    } catch (err) {
+      console.error('Erreur fetch app version:', err);
+    }
+
+    try {
+      const countRes = await fetch(`${SERVER_URL}/api/fcm/count`);
+      if (countRes.ok) {
+        const cData = await countRes.json();
+        setFcmCount(cData.count || 0);
+      }
+    } catch (err) {
+      console.error('Erreur fetch fcm count:', err);
+    }
+  };
+
+  const handleSaveAppVersion = async (e) => {
+    e.preventDefault();
+    if (!username || !password) {
+      setStatus({ type: 'error', message: 'Veuillez saisir votre identifiant et mot de passe.' });
+      return;
+    }
+    setLoading(true);
+    setStatus({ type: '', message: '' });
+
+    try {
+      const res = await fetch(`${SERVER_URL}/api/admin/app-version`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          ...appVersionForm
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setStatus({
+          type: 'success',
+          message: lang === 'ar'
+            ? `تم حفظ التحديث بنجاح! تم إشعار ${data.notifiedDevices || 0} جهاز.`
+            : `Mise à jour enregistrée ! ${data.notifiedDevices || 0} appareils notifiés.`
+        });
+        fetchAppVersion();
+      } else {
+        setStatus({ type: 'error', message: data.error || 'Erreur lors de la mise à jour.' });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: t.connError });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNotifyOnly = async () => {
+    if (!username || !password) {
+      setStatus({ type: 'error', message: 'Veuillez saisir votre identifiant et mot de passe.' });
+      return;
+    }
+    setLoading(true);
+    setStatus({ type: '', message: '' });
+
+    try {
+      const res = await fetch(`${SERVER_URL}/api/admin/app-version/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStatus({
+          type: 'success',
+          message: lang === 'ar'
+            ? `تم إرسال تنبيه التحديث إلى ${data.notifiedDevices || 0} هاتف!`
+            : `Alerte de mise à jour envoyée à ${data.notifiedDevices || 0} appareils !`
+        });
+      } else {
+        setStatus({ type: 'error', message: data.error || 'Erreur.' });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: t.connError });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Sauvegarder les identifiants quand ils changent
   useEffect(() => {
@@ -520,6 +636,16 @@ export default function App() {
           >
             <Activity size={18} /> Dashboard
           </button>
+          <button 
+            type="button"
+            onClick={() => {
+              setActiveTab('mobileUpdate');
+              fetchAppVersion();
+            }}
+            style={{ flex: 1, padding: '0.5rem', background: 'transparent', border: 'none', color: activeTab === 'mobileUpdate' ? 'var(--gold-primary)' : 'var(--text-muted)', borderBottom: activeTab === 'mobileUpdate' ? '2px solid var(--gold-primary)' : 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+          >
+            <Smartphone size={18} /> {lang === 'ar' ? 'تحديثات الهاتف' : lang === 'en' ? 'App Updates' : lang === 'es' ? 'Actualizaciones' : 'MàJ Mobiles'}
+          </button>
         </div>
 
         {activeTab === 'price' ? (
@@ -781,7 +907,7 @@ export default function App() {
               </table>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'dashboard' ? (
           <div className="dashboard-view" style={{ textAlign: lang === 'ar' ? 'right' : 'left' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
               <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: '15px', borderLeft: '4px solid #10b981' }}>
@@ -1015,7 +1141,292 @@ export default function App() {
               </table>
             </div>
           </div>
-        )}
+        ) : activeTab === 'mobileUpdate' ? (
+          <div className="mobile-update-view" style={{ textAlign: lang === 'ar' ? 'right' : 'left' }}>
+            {/* Header info */}
+            <div style={{ background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(20, 24, 33, 0.9) 100%)', border: '1px solid rgba(212, 175, 55, 0.35)', borderRadius: '15px', padding: '1.25rem', marginBottom: '1.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  <div style={{ background: 'rgba(212, 175, 55, 0.2)', padding: '0.6rem', borderRadius: '12px', color: 'var(--gold-primary)' }}>
+                    <Smartphone size={24} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff' }}>
+                      {lang === 'ar' ? 'نظام طلب تحديث التطبيق على الهواتف' : 'Gestion des Mises à jour Mobiles (Android APK & PWA)'}
+                    </h3>
+                    <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      {lang === 'ar' 
+                        ? 'طلب التحديث من جميع مستخدمي الهواتف فور إصدار أي نسخة جديدة'
+                        : 'Alerte automatique tous les utilisateurs mobiles pour installer la dernière version'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleNotifyOnly}
+                  disabled={loading}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    background: 'rgba(212, 175, 55, 0.2)',
+                    border: '1px solid var(--gold-primary)',
+                    color: 'var(--gold-primary)',
+                    borderRadius: '8px',
+                    padding: '0.6rem 1rem',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  <Bell size={16} />
+                  <span>{lang === 'ar' ? 'إعادة إرسال تنبيه فوري' : 'Renvoyer une alerte aux téléphones'}</span>
+                </button>
+              </div>
+
+              {/* Status metrics */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: '10px', borderLeft: '3px solid #d4af37' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Version active</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#fbbf24' }}>
+                    v{appVersionForm.version} <span style={{ fontSize: '0.8rem', color: 'gray' }}>(Code: {appVersionForm.versionCode})</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: '10px', borderLeft: '3px solid #10b981' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Téléphones inscrits (FCM Push)</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#10b981' }}>
+                    {fcmCount} appareils
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: '10px', borderLeft: `3px solid ${appVersionForm.forceUpdate ? '#ef4444' : '#3b82f6'}` }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Type de mise à jour</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 'bold', color: appVersionForm.forceUpdate ? '#f87171' : '#60a5fa' }}>
+                    {appVersionForm.forceUpdate ? 'Obligatoire (Bloquante)' : 'Recommandée'}
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: '10px', borderLeft: '3px solid #a855f7' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Fichier APK Client</div>
+                  <a 
+                    href="https://goldprojectbackend-production.up.railway.app/PrixOr.apk" 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    style={{ fontSize: '0.85rem', color: '#c084fc', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', fontWeight: 'bold' }}
+                  >
+                    <Download size={14} /> Tester / Télécharger APK
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveAppVersion} style={{ background: 'rgba(255,255,255,0.04)', padding: '1.5rem', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <h3 style={{ marginTop: 0, marginBottom: '1.25rem', fontSize: '1.1rem', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Sparkles size={18} />
+                {lang === 'ar' ? 'إعدادات الإصدار الجديد وإرسال الإشعار' : 'Publier une nouvelle version et notifier les mobiles'}
+              </h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div className="form-group">
+                  <label htmlFor="versionNum" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                    {lang === 'ar' ? 'رقم الإصدار (Version Name)' : 'Numéro de Version'}
+                  </label>
+                  <input
+                    type="text"
+                    id="versionNum"
+                    required
+                    className="form-input"
+                    value={appVersionForm.version}
+                    onChange={e => setAppVersionForm({ ...appVersionForm, version: e.target.value })}
+                    placeholder="Ex: 1.2.0"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="versionCode" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                    {lang === 'ar' ? 'رمز الإصدار (Version Code - رقم تصاعدي)' : 'Code de Version (Entier)'}
+                  </label>
+                  <input
+                    type="number"
+                    id="versionCode"
+                    required
+                    min="1"
+                    className="form-input"
+                    value={appVersionForm.versionCode}
+                    onChange={e => setAppVersionForm({ ...appVersionForm, versionCode: parseInt(e.target.value, 10) || 1 })}
+                    placeholder="Ex: 3"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="minVersionCode" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                    {lang === 'ar' ? 'الحد الأدنى لرمز الإصدار المطلوب' : 'Code Minimal Requis'}
+                  </label>
+                  <input
+                    type="number"
+                    id="minVersionCode"
+                    min="1"
+                    className="form-input"
+                    value={appVersionForm.minVersionCode}
+                    onChange={e => setAppVersionForm({ ...appVersionForm, minVersionCode: parseInt(e.target.value, 10) || 1 })}
+                    placeholder="Ex: 1"
+                  />
+                </div>
+              </div>
+
+              {/* Force update checkbox */}
+              <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '10px', padding: '0.85rem 1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <input
+                  type="checkbox"
+                  id="forceUpdate"
+                  checked={appVersionForm.forceUpdate}
+                  onChange={e => setAppVersionForm({ ...appVersionForm, forceUpdate: e.target.checked })}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#ef4444' }}
+                />
+                <label htmlFor="forceUpdate" style={{ cursor: 'pointer', fontSize: '0.9rem', color: '#fca5a5', fontWeight: 'bold' }}>
+                  {lang === 'ar'
+                    ? 'تحديث إجباري (يمنع استخدام التطبيق القديم حتى يتم التحديث)'
+                    : 'Mise à jour obligatoire (Bloque l\'application sur mobile jusqu\'à l\'installation)'}
+                </label>
+              </div>
+
+              {/* APK URL */}
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label htmlFor="apkUrl" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                  {lang === 'ar' ? 'رابط ملف APK للتحميل المباشر' : 'Lien de téléchargement du fichier APK'}
+                </label>
+                <input
+                  type="text"
+                  id="apkUrl"
+                  required
+                  className="form-input"
+                  value={appVersionForm.apkUrl}
+                  onChange={e => setAppVersionForm({ ...appVersionForm, apkUrl: e.target.value })}
+                  placeholder="https://..."
+                />
+              </div>
+
+              {/* Titles & Messages */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div className="form-group">
+                  <label htmlFor="titleFr" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                    Titre de l'alerte (Français)
+                  </label>
+                  <input
+                    type="text"
+                    id="titleFr"
+                    className="form-input"
+                    value={appVersionForm.titleFr}
+                    onChange={e => setAppVersionForm({ ...appVersionForm, titleFr: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="titleAr" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold', textAlign: 'right' }}>
+                    عنوان التنبيه (عربي)
+                  </label>
+                  <input
+                    type="text"
+                    id="titleAr"
+                    className="form-input"
+                    dir="rtl"
+                    value={appVersionForm.titleAr}
+                    onChange={e => setAppVersionForm({ ...appVersionForm, titleAr: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Release notes */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="form-group">
+                  <label htmlFor="notesFr" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                    Nouveautés & Notes de mise à jour (Français)
+                  </label>
+                  <textarea
+                    id="notesFr"
+                    rows="3"
+                    className="form-input"
+                    style={{ resize: 'vertical' }}
+                    value={appVersionForm.notesFr}
+                    onChange={e => setAppVersionForm({ ...appVersionForm, notesFr: e.target.value })}
+                    placeholder="• Nouvelle fonctionnalité..."
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="notesAr" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 'bold', textAlign: 'right' }}>
+                    ما الجديد والمميزات (عربي)
+                  </label>
+                  <textarea
+                    id="notesAr"
+                    rows="3"
+                    dir="rtl"
+                    className="form-input"
+                    style={{ resize: 'vertical' }}
+                    value={appVersionForm.notesAr}
+                    onChange={e => setAppVersionForm({ ...appVersionForm, notesAr: e.target.value })}
+                    placeholder="• ميزة جديدة..."
+                  />
+                </div>
+              </div>
+
+              {/* Broadcast Options */}
+              <div style={{ background: 'rgba(212, 175, 55, 0.08)', border: '1px solid rgba(212, 175, 55, 0.25)', borderRadius: '10px', padding: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{ fontWeight: 'bold', color: 'var(--gold-primary)', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+                  {lang === 'ar' ? 'خيارات الإرسال والتنبيه :' : 'Options de diffusion de l\'alerte :'}
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontSize: '0.88rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={appVersionForm.sendPushNotification}
+                      onChange={e => setAppVersionForm({ ...appVersionForm, sendPushNotification: e.target.checked })}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--gold-primary)' }}
+                    />
+                    <span>{lang === 'ar' ? 'إرسال إشعار فوري (Push Notification) لجميع الهواتف المحمولة' : 'Envoyer une notification push FCM à tous les téléphones enregistrés'}</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontSize: '0.88rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={appVersionForm.broadcastSocket}
+                      onChange={e => setAppVersionForm({ ...appVersionForm, broadcastSocket: e.target.checked })}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--gold-primary)' }}
+                    />
+                    <span>{lang === 'ar' ? 'إظهار نافذة التحديث فوراً في التطبيق لجميع المستخدمين المتصلين حالياً' : 'Afficher la fenêtre de mise à jour instantanément aux utilisateurs connectés (Socket.IO)'}</span>
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  padding: '1rem',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.6rem'
+                }}
+              >
+                <Send size={18} />
+                <span>
+                  {loading 
+                    ? (lang === 'ar' ? 'جاري النشر والإشعار...' : 'Envoi de l\'alerte...')
+                    : (lang === 'ar' ? '🚀 نشر التحديث وإشعار جميع المستخدمين على الهواتف' : '🚀 Publier & Demander la mise à jour à tous les mobiles')}
+                </span>
+              </button>
+            </form>
+          </div>
+        ) : null}
 
         {status.message && (
           <div className={`status-message status-${status.type}`}>
